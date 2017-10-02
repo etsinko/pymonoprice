@@ -33,10 +33,10 @@ SOFTWARE.
 """
 
 setup(name='pymonoprice',
-      version='0.1',
+      version='0.2',
       description='Python API for talking to Monoprice 6-zone amplifier',
       url='https://github.com/etsinko/pymonoprice',
-      download_url='https://github.com/etsinko/pymonoprice/archive/0.1.tar.gz',
+      download_url='https://github.com/etsinko/pymonoprice/archive/0.2.tar.gz',
       author='Egor Tsinko',
       author_email='etsinko@gmail.com',
       license='MIT',
