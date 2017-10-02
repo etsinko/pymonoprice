@@ -1,7 +1,9 @@
 import re
 import serial
-from threading import RLock
+from threading import Lock
+import logging
 
+_LOGGER = logging.getLogger(__name__)
 ZONE_PATTERN = re.compile('#>(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)')
 
 EOL = b'\r\n#'
@@ -37,12 +39,15 @@ class ZoneStatus(object):
     def from_string(self, string: str):
         if not string:
             return None
-        return ZoneStatus(*[int(m) for m in re.search(ZONE_PATTERN, string).groups()])
+        match = re.search(ZONE_PATTERN, string)
+        if not match:
+            return None
+        return ZoneStatus(*[int(m) for m in match.groups()])
 
 
 class Monoprice(object):
     def __init__(self, port_url):
-        self._lock = RLock()
+        self._lock = Lock()
         self._port = serial.serial_for_url(port_url, do_not_open=True)
         self._port.baudrate = 9600
         self._port.stopbits = serial.STOPBITS_ONE
@@ -52,14 +57,20 @@ class Monoprice(object):
         self._port.write_timeout = 2
         self._port.open()
 
-    def _process_request(self, request):
+    def _process_request(self, request, num_ignore=0):
+        """
+        :param request: request that is sent to the monoprice
+        :param num_ignore: number of bytes to ignore for end of transmission decoding
+        :return: ascii string returned by monoprice
+        """
         with self._lock:
+            _LOGGER.debug('Sending "{}"'.format(request))
             # clear
-            self._port.flush()
             self._port.reset_output_buffer()
             self._port.reset_input_buffer()
             # send
             self._port.write(request.encode())
+            self._port.flush()
             # receive
             result = bytearray()
             while True:
@@ -67,10 +78,11 @@ class Monoprice(object):
                 if not c:
                     raise serial.SerialTimeoutException('Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
                 result += c
-                # Ignore first 3 bytes as they will identical to EOL!
-                if len(result) > 3 and result[-LEN_EOL:] == EOL:
+                if len(result) > num_ignore and result[-LEN_EOL:] == EOL:
                     break
-            return bytes(result).decode('ascii')
+            ret = bytes(result).decode('ascii')
+            _LOGGER.debug('Received "{}"'.format(ret))
+            return ret
 
     def zone_status(self, zone: int):
         """
@@ -78,7 +90,8 @@ class Monoprice(object):
         :param zone: zone 11..16, 21..26, 31..36
         :return: status of the zone or None
         """
-        return ZoneStatus.from_string(self._process_request('?{}\r'.format(zone)))
+        # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
+        return ZoneStatus.from_string(self._process_request('?{}\r'.format(zone), num_ignore=6))
 
     def set_power(self, zone: int, power: bool):
         """
