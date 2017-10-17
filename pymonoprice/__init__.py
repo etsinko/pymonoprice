@@ -1,28 +1,32 @@
+import asyncio
+import functools
+import logging
 import re
 import serial
+from serial_asyncio import create_serial_connection
 from threading import Lock
-import logging
 
 _LOGGER = logging.getLogger(__name__)
 ZONE_PATTERN = re.compile('#>(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)')
 
 EOL = b'\r\n#'
 LEN_EOL = len(EOL)
+TIMEOUT = 2  # Number of seconds before serial operation timeout
 
 
 class ZoneStatus(object):
     def __init__(self,
                  zone: int,
-                 pa:bool,
-                 power:bool,
-                 mute:bool,
+                 pa: bool,
+                 power: bool,
+                 mute: bool,
                  do_not_disturb: bool,
-                 volume:int,  # 0 - 38
-                 treble:int,  # 0 -> -7,  14-> +7
-                 bass:int,  # 0 -> -7,  14-> +7
-                 balance:int,  # 00 - left, 10 - center, 20 right
-                 source:int,
-                 keypad:bool):
+                 volume: int,  # 0 - 38
+                 treble: int,  # 0 -> -7,  14-> +7
+                 bass: int,  # 0 -> -7,  14-> +7
+                 balance: int,  # 00 - left, 10 - center, 20 right
+                 source: int,
+                 keypad: bool):
         self.zone = zone
         self.pa = bool(pa)
         self.power = bool(power)
@@ -36,7 +40,7 @@ class ZoneStatus(object):
         self.keypad = bool(keypad)
 
     @classmethod
-    def from_string(self, string: str):
+    def from_string(cls, string: str):
         if not string:
             return None
         match = re.search(ZONE_PATTERN, string)
@@ -46,43 +50,9 @@ class ZoneStatus(object):
 
 
 class Monoprice(object):
-    def __init__(self, port_url):
-        self._lock = Lock()
-        self._port = serial.serial_for_url(port_url, do_not_open=True)
-        self._port.baudrate = 9600
-        self._port.stopbits = serial.STOPBITS_ONE
-        self._port.bytesize = serial.EIGHTBITS
-        self._port.parity = serial.PARITY_NONE
-        self._port.timeout = 2
-        self._port.write_timeout = 2
-        self._port.open()
-
-    def _process_request(self, request, num_ignore=0):
-        """
-        :param request: request that is sent to the monoprice
-        :param num_ignore: number of bytes to ignore for end of transmission decoding
-        :return: ascii string returned by monoprice
-        """
-        with self._lock:
-            _LOGGER.debug('Sending "{}"'.format(request))
-            # clear
-            self._port.reset_output_buffer()
-            self._port.reset_input_buffer()
-            # send
-            self._port.write(request.encode())
-            self._port.flush()
-            # receive
-            result = bytearray()
-            while True:
-                c = self._port.read(1)
-                if not c:
-                    raise serial.SerialTimeoutException('Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
-                result += c
-                if len(result) > num_ignore and result[-LEN_EOL:] == EOL:
-                    break
-            ret = bytes(result).decode('ascii')
-            _LOGGER.debug('Received "{}"'.format(ret))
-            return ret
+    """
+    Monoprice amplifier interface
+    """
 
     def zone_status(self, zone: int):
         """
@@ -90,66 +60,260 @@ class Monoprice(object):
         :param zone: zone 11..16, 21..26, 31..36
         :return: status of the zone or None
         """
-        # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
-        return ZoneStatus.from_string(self._process_request('?{}\r'.format(zone), num_ignore=6))
+        raise NotImplemented()
 
     def set_power(self, zone: int, power: bool):
         """
-        Turns zone on or off
+        Turn zone on or off
         :param zone: zone 11..16, 21..26, 31..36
         :param power: True to turn on, False to turn off
         """
-        self._process_request('<{}PR{}\r'.format(zone, '01' if power else '00'))
+        raise NotImplemented()
 
     def set_mute(self, zone: int, mute: bool):
         """
-        Mutes zone on or off
+        Mute zone on or off
         :param zone: zone 11..16, 21..26, 31..36
         :param mute: True to mute, False to unmute
         """
-        self._process_request('<{}MU{}\r'.format(zone, '01' if mute else '00'))
+        raise NotImplemented()
 
     def set_volume(self, zone: int, volume: int):
         """
-        Sets volume for zone
+        Set volume for zone
         :param zone: zone 11..16, 21..26, 31..36
         :param volume: integer from 0 to 38 inclusive
         """
-        volume = max(0, min(volume, 38))
-        self._process_request('<{}VO{:02}\r'.format(zone, volume))
+        raise NotImplemented()
 
     def set_treble(self, zone: int, treble: int):
         """
-        Sets treble for zone
+        Set treble for zone
         :param zone: zone 11..16, 21..26, 31..36
         :param treble: integer from 0 to 14 inclusive, where 0 is -7 treble and 14 is +7
         """
-        treble = max(0, min(treble, 14))
-        self._process_request('<{}TR{:02}\r'.format(zone, treble))
+        raise NotImplemented()
 
     def set_bass(self, zone: int, bass: int):
         """
-        Sets bass for zone
+        Set bass for zone
         :param zone: zone 11..16, 21..26, 31..36
         :param bass: integer from 0 to 14 inclusive, where 0 is -7 bass and 14 is +7
         """
-        bass = max(0, min(bass, 14))
-        self._process_request('<{}BS{:02}\r'.format(zone, bass))
+        raise NotImplemented()
 
     def set_balance(self, zone: int, balance: int):
         """
-        Sets balance for zone
+        Set balance for zone
         :param zone: zone 11..16, 21..26, 31..36
         :param balance: integer from 0 to 20 inclusive, where 0 is -10(left), 0 is center and 20 is +10 (right)
         """
-        balance = max(0, min(balance, 20))
-        self._process_request('<{}BL{:02}\r'.format(zone, balance))
+        raise NotImplemented()
 
     def set_source(self, zone: int, source: int):
         """
-        Sets source for zone
+        Set source for zone
         :param zone: zone 11..16, 21..26, 31..36
         :param source: integer from 0 to 6 inclusive
         """
-        source = max(1, min(source, 6))
-        self._process_request('<{}CH{:02}\r'.format(zone, source))
+        raise NotImplemented()
+
+
+# Helpers
+
+def _format_zone_status_request(zone: int) -> str:
+    return '?{}\r'.format(zone)
+
+
+def _format_set_power(zone: int, power: bool) -> str:
+    return '<{}PR{}\r'.format(zone, '01' if power else '00')
+
+
+def _format_set_mute(zone: int, mute: bool) -> str:
+    return '<{}MU{}\r'.format(zone, '01' if mute else '00')
+
+
+def _format_set_volume(zone: int, volume: int) -> str:
+    volume = int(max(0, min(volume, 38)))
+    return '<{}VO{:02}\r'.format(zone, volume)
+
+
+def _format_set_treble(zone: int, treble: int) -> str:
+    treble = int(max(0, min(treble, 14)))
+    return '<{}TR{:02}\r'.format(zone, treble)
+
+
+def _format_set_bass(zone: int, bass: int) -> str:
+    bass = int(max(0, min(bass, 14)))
+    return '<{}BS{:02}\r'.format(zone, bass)
+
+
+def _format_set_balance(zone: int, balance: int) -> str:
+    balance = max(0, min(balance, 20))
+    return '<{}BL{:02}\r'.format(zone, balance)
+
+
+def _format_set_source(zone: int, source: int) -> str:
+    source = int(max(1, min(source, 6)))
+    return '<{}CH{:02}\r'.format(zone, source)
+
+
+def get_sync_monoprice(port_url):
+    """
+    Return synchronous version of Monoprice interface
+    :param port_url: serial port, i.e. '/dev/ttyUSB0'
+    :return: synchronous implementation of Monoprice interface
+    """
+    class MonopriceSync(Monoprice):
+        def __init__(self, port_url):
+            self._lock = Lock()
+            self._port = serial.serial_for_url(port_url, do_not_open=True)
+            self._port.baudrate = 9600
+            self._port.stopbits = serial.STOPBITS_ONE
+            self._port.bytesize = serial.EIGHTBITS
+            self._port.parity = serial.PARITY_NONE
+            self._port.timeout = TIMEOUT
+            self._port.write_timeout = TIMEOUT
+            self._port.open()
+
+        def _process_request(self, request, skip=0):
+            """
+            :param request: request that is sent to the monoprice
+            :param skip: number of bytes to skip for end of transmission decoding
+            :return: ascii string returned by monoprice
+            """
+            with self._lock:
+                _LOGGER.debug('Sending "{}"'.format(request))
+                # clear
+                self._port.reset_output_buffer()
+                self._port.reset_input_buffer()
+                # send
+                self._port.write(request.encode())
+                self._port.flush()
+                # receive
+                result = bytearray()
+                while True:
+                    c = self._port.read(1)
+                    if not c:
+                        raise serial.SerialTimeoutException(
+                            'Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
+                    result += c
+                    if len(result) > skip and result[-LEN_EOL:] == EOL:
+                        break
+                ret = bytes(result).decode('ascii')
+                _LOGGER.debug('Received "{}"'.format(ret))
+                return ret
+
+        def zone_status(self, zone: int):
+            # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
+            return ZoneStatus.from_string(self._process_request(_format_zone_status_request(zone), skip=6))
+
+        def set_power(self, zone: int, power: bool):
+            self._process_request(_format_set_power(zone, power))
+
+        def set_mute(self, zone: int, mute: bool):
+            self._process_request(_format_set_mute(zone, mute))
+
+        def set_volume(self, zone: int, volume: int):
+            self._process_request(_format_set_volume(zone, volume))
+
+        def set_treble(self, zone: int, treble: int):
+            self._process_request(_format_set_treble(zone, treble))
+
+        def set_bass(self, zone: int, bass: int):
+            self._process_request(_format_set_bass(zone, bass))
+
+        def set_balance(self, zone: int, balance: int):
+            self._process_request(_format_set_balance(zone, balance))
+
+        def set_source(self, zone: int, source: int):
+            self._process_request(_format_set_source(zone, source))
+
+    return MonopriceSync(port_url)
+
+
+@asyncio.coroutine
+def get_async_monoprice(port_url, loop):
+    """
+    Return asynchronous version of Monoprice interface
+    :param port_url: serial port, i.e. '/dev/ttyUSB0'
+    :return: asynchronous implementation of Monoprice interface
+    """
+    class MonopriceAsync(Monoprice):
+        def __init__(self, monoprice_protocol):
+            self._protocol = monoprice_protocol
+
+        @asyncio.coroutine
+        def zone_status(self, zone: int):
+            # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
+            string = yield from self._protocol.send(_format_zone_status_request(zone), skip=6)
+            return ZoneStatus.from_string(string)
+
+        @asyncio.coroutine
+        def set_power(self, zone: int, power: bool):
+            yield from self._protocol.send(_format_set_power(zone, power))
+
+        @asyncio.coroutine
+        def set_mute(self, zone: int, mute: bool):
+            yield from self._protocol.send(_format_set_mute(zone, mute))
+
+        @asyncio.coroutine
+        def set_volume(self, zone: int, volume: int):
+            yield from self._protocol.send(_format_set_volume(zone, volume))
+
+        @asyncio.coroutine
+        def set_treble(self, zone: int, treble: int):
+            yield from self._protocol.send(_format_set_treble(zone, treble))
+
+        @asyncio.coroutine
+        def set_bass(self, zone: int, bass: int):
+            yield from self._protocol.send(_format_set_bass(zone, bass))
+
+        @asyncio.coroutine
+        def set_balance(self, zone: int, balance: int):
+            yield from self._protocol.send(_format_set_balance(zone, balance))
+
+        @asyncio.coroutine
+        def set_source(self, zone: int, source: int):
+            yield from self._protocol.send(_format_set_source(zone, source))
+
+    class MonopriceProtocol(asyncio.Protocol):
+        def __init__(self, loop):
+            super().__init__()
+            self._loop = loop
+            self._lock = asyncio.Lock()
+            self._transport = None
+            self._connected = asyncio.Event(loop=loop)
+            self.q = asyncio.Queue(loop=loop)
+
+        def connection_made(self, transport):
+            self._transport = transport
+            self._connected.set()
+            _LOGGER.debug('port opened %s', self._transport)
+
+        def data_received(self, data):
+            asyncio.ensure_future(self.q.put(data), loop=self._loop)
+
+        @asyncio.coroutine
+        def send(self, request, skip=0):
+            yield from self._connected.wait()
+            result = bytearray()
+            # Only one transaction at a time
+            with (yield from self._lock):
+                self._transport.serial.reset_output_buffer()
+                self._transport.serial.reset_input_buffer()
+                self._transport.write(request.encode())
+                try:
+                    while True:
+                        result += yield from asyncio.wait_for(self.q.get(), TIMEOUT, loop=self._loop)
+                        if len(result) > skip and result[-LEN_EOL:] == EOL:
+                            ret = bytes(result).decode('ascii')
+                            _LOGGER.debug('Received "{}"'.format(ret))
+                            return ret
+                except asyncio.TimeoutError:
+                    _LOGGER.error("Timeout during receiving response for command '%s'", list(request))
+                    raise
+
+    _, protocol = yield from create_serial_connection(loop, functools.partial(MonopriceProtocol, loop),
+                                                      port_url, baudrate=9600)
+    return MonopriceAsync(protocol)
