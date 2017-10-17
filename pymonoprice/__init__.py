@@ -121,41 +121,41 @@ class Monoprice(object):
 
 # Helpers
 
-def _format_zone_status_request(zone: int) -> str:
-    return '?{}\r'.format(zone)
+def _format_zone_status_request(zone: int) -> bytes:
+    return '?{}\r'.format(zone).encode()
 
 
-def _format_set_power(zone: int, power: bool) -> str:
-    return '<{}PR{}\r'.format(zone, '01' if power else '00')
+def _format_set_power(zone: int, power: bool) -> bytes:
+    return '<{}PR{}\r'.format(zone, '01' if power else '00').encode()
 
 
-def _format_set_mute(zone: int, mute: bool) -> str:
-    return '<{}MU{}\r'.format(zone, '01' if mute else '00')
+def _format_set_mute(zone: int, mute: bool) -> bytes:
+    return '<{}MU{}\r'.format(zone, '01' if mute else '00').encode()
 
 
-def _format_set_volume(zone: int, volume: int) -> str:
+def _format_set_volume(zone: int, volume: int) -> bytes:
     volume = int(max(0, min(volume, 38)))
-    return '<{}VO{:02}\r'.format(zone, volume)
+    return '<{}VO{:02}\r'.format(zone, volume).encode()
 
 
-def _format_set_treble(zone: int, treble: int) -> str:
+def _format_set_treble(zone: int, treble: int) -> bytes:
     treble = int(max(0, min(treble, 14)))
-    return '<{}TR{:02}\r'.format(zone, treble)
+    return '<{}TR{:02}\r'.format(zone, treble).encode()
 
 
-def _format_set_bass(zone: int, bass: int) -> str:
+def _format_set_bass(zone: int, bass: int) -> bytes:
     bass = int(max(0, min(bass, 14)))
-    return '<{}BS{:02}\r'.format(zone, bass)
+    return '<{}BS{:02}\r'.format(zone, bass).encode()
 
 
-def _format_set_balance(zone: int, balance: int) -> str:
+def _format_set_balance(zone: int, balance: int) -> bytes:
     balance = max(0, min(balance, 20))
-    return '<{}BL{:02}\r'.format(zone, balance)
+    return '<{}BL{:02}\r'.format(zone, balance).encode()
 
 
-def _format_set_source(zone: int, source: int) -> str:
+def _format_set_source(zone: int, source: int) -> bytes:
     source = int(max(1, min(source, 6)))
-    return '<{}CH{:02}\r'.format(zone, source)
+    return '<{}CH{:02}\r'.format(zone, source).encode()
 
 
 def get_sync_monoprice(port_url):
@@ -176,19 +176,19 @@ def get_sync_monoprice(port_url):
             self._port.write_timeout = TIMEOUT
             self._port.open()
 
-        def _process_request(self, request, skip=0):
+        def _process_request(self, request: bytes, skip=0):
             """
             :param request: request that is sent to the monoprice
             :param skip: number of bytes to skip for end of transmission decoding
             :return: ascii string returned by monoprice
             """
             with self._lock:
-                _LOGGER.debug('Sending "{}"'.format(request))
+                _LOGGER.debug('Sending "%s"', request)
                 # clear
                 self._port.reset_output_buffer()
                 self._port.reset_input_buffer()
                 # send
-                self._port.write(request.encode())
+                self._port.write(request)
                 self._port.flush()
                 # receive
                 result = bytearray()
@@ -200,9 +200,9 @@ def get_sync_monoprice(port_url):
                     result += c
                     if len(result) > skip and result[-LEN_EOL:] == EOL:
                         break
-                ret = bytes(result).decode('ascii')
-                _LOGGER.debug('Received "{}"'.format(ret))
-                return ret
+                ret = bytes(result)
+                _LOGGER.debug('Received "%s"', ret)
+                return ret.decode('ascii')
 
         def zone_status(self, zone: int):
             # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
@@ -295,23 +295,23 @@ def get_async_monoprice(port_url, loop):
             asyncio.ensure_future(self.q.put(data), loop=self._loop)
 
         @asyncio.coroutine
-        def send(self, request, skip=0):
+        def send(self, request: bytes, skip=0):
             yield from self._connected.wait()
             result = bytearray()
             # Only one transaction at a time
             with (yield from self._lock):
                 self._transport.serial.reset_output_buffer()
                 self._transport.serial.reset_input_buffer()
-                self._transport.write(request.encode())
+                self._transport.write(request)
                 try:
                     while True:
                         result += yield from asyncio.wait_for(self.q.get(), TIMEOUT, loop=self._loop)
                         if len(result) > skip and result[-LEN_EOL:] == EOL:
-                            ret = bytes(result).decode('ascii')
-                            _LOGGER.debug('Received "{}"'.format(ret))
-                            return ret
+                            ret = bytes(result)
+                            _LOGGER.debug('Received "%s"', ret)
+                            return ret.decode('ascii')
                 except asyncio.TimeoutError:
-                    _LOGGER.error("Timeout during receiving response for command '%s'", list(request))
+                    _LOGGER.error("Timeout during receiving response for command '%s', received='%s'", request, result)
                     raise
 
     _, protocol = yield from create_serial_connection(loop, functools.partial(MonopriceProtocol, loop),
