@@ -4,7 +4,7 @@ import logging
 import re
 import serial
 from serial_asyncio import create_serial_connection
-from threading import Lock
+from threading import RLock
 
 _LOGGER = logging.getLogger(__name__)
 ZONE_PATTERN = re.compile('#>(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)')
@@ -118,6 +118,13 @@ class Monoprice(object):
         """
         raise NotImplemented()
 
+    def restore_zone(self, status: ZoneStatus):
+        """
+        Restores zone to it's previous state
+        :param status: zone state to restore
+        """
+        raise NotImplemented()
+
 
 # Helpers
 
@@ -164,9 +171,17 @@ def get_sync_monoprice(port_url):
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
     :return: synchronous implementation of Monoprice interface
     """
+
+    lock = RLock()
+
+    def synchronized(func):
+        def wrapper(*args, **kwargs):
+            with lock:
+                return func(*args, **kwargs)
+        return wrapper
+
     class MonopriceSync(Monoprice):
         def __init__(self, port_url):
-            self._lock = Lock()
             self._port = serial.serial_for_url(port_url, do_not_open=True)
             self._port.baudrate = 9600
             self._port.stopbits = serial.STOPBITS_ONE
@@ -182,52 +197,69 @@ def get_sync_monoprice(port_url):
             :param skip: number of bytes to skip for end of transmission decoding
             :return: ascii string returned by monoprice
             """
-            with self._lock:
-                _LOGGER.debug('Sending "%s"', request)
-                # clear
-                self._port.reset_output_buffer()
-                self._port.reset_input_buffer()
-                # send
-                self._port.write(request)
-                self._port.flush()
-                # receive
-                result = bytearray()
-                while True:
-                    c = self._port.read(1)
-                    if not c:
-                        raise serial.SerialTimeoutException(
-                            'Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
-                    result += c
-                    if len(result) > skip and result[-LEN_EOL:] == EOL:
-                        break
-                ret = bytes(result)
-                _LOGGER.debug('Received "%s"', ret)
-                return ret.decode('ascii')
+            _LOGGER.debug('Sending "%s"', request)
+            # clear
+            self._port.reset_output_buffer()
+            self._port.reset_input_buffer()
+            # send
+            self._port.write(request)
+            self._port.flush()
+            # receive
+            result = bytearray()
+            while True:
+                c = self._port.read(1)
+                if not c:
+                    raise serial.SerialTimeoutException(
+                        'Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
+                result += c
+                if len(result) > skip and result[-LEN_EOL:] == EOL:
+                    break
+            ret = bytes(result)
+            _LOGGER.debug('Received "%s"', ret)
+            return ret.decode('ascii')
 
+        @synchronized
         def zone_status(self, zone: int):
             # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
             return ZoneStatus.from_string(self._process_request(_format_zone_status_request(zone), skip=6))
 
+        @synchronized
         def set_power(self, zone: int, power: bool):
             self._process_request(_format_set_power(zone, power))
 
+        @synchronized
         def set_mute(self, zone: int, mute: bool):
             self._process_request(_format_set_mute(zone, mute))
 
+        @synchronized
         def set_volume(self, zone: int, volume: int):
             self._process_request(_format_set_volume(zone, volume))
 
+        @synchronized
         def set_treble(self, zone: int, treble: int):
             self._process_request(_format_set_treble(zone, treble))
 
+        @synchronized
         def set_bass(self, zone: int, bass: int):
             self._process_request(_format_set_bass(zone, bass))
 
+        @synchronized
         def set_balance(self, zone: int, balance: int):
             self._process_request(_format_set_balance(zone, balance))
 
+        @synchronized
         def set_source(self, zone: int, source: int):
             self._process_request(_format_set_source(zone, source))
+
+        @synchronized
+        def restore_zone(self, status: ZoneStatus):
+            self.set_power(status.zone, status.power)
+            self.set_mute(status.zone, status.mute)
+            self.set_volume(status.zone, status.volume)
+            self.set_treble(status.zone, status.treble)
+            self.set_bass(status.zone, status.bass)
+            self.set_balance(status.zone, status.balance)
+            self.set_source(status.zone, status.source)
 
     return MonopriceSync(port_url)
 
@@ -276,6 +308,17 @@ def get_async_monoprice(port_url, loop):
         @asyncio.coroutine
         def set_source(self, zone: int, source: int):
             yield from self._protocol.send(_format_set_source(zone, source))
+
+        @asyncio.coroutine
+        def restore_zone(self, status: ZoneStatus):
+            # TODO reimplement lock
+            yield from self.set_power(status.zone, status.power)
+            yield from self.set_mute(status.zone, status.mute)
+            yield from self.set_volume(status.zone, status.volume)
+            yield from self.set_treble(status.zone, status.treble)
+            yield from self.set_bass(status.zone, status.bass)
+            yield from self.set_balance(status.zone, status.balance)
+            yield from self.set_source(status.zone, status.source)
 
     class MonopriceProtocol(asyncio.Protocol):
         def __init__(self, loop):
