@@ -271,54 +271,72 @@ def get_async_monoprice(port_url, loop):
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
     :return: asynchronous implementation of Monoprice interface
     """
+
+    lock = asyncio.Lock()
+
+    def locked_coro(coro):
+        @asyncio.coroutine
+        def wrapper(*args, **kwargs):
+            with (yield from lock):
+                return (yield from coro(*args, **kwargs))
+        return wrapper
+
     class MonopriceAsync(Monoprice):
         def __init__(self, monoprice_protocol):
             self._protocol = monoprice_protocol
 
+        @locked_coro
         @asyncio.coroutine
         def zone_status(self, zone: int):
             # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
             string = yield from self._protocol.send(_format_zone_status_request(zone), skip=6)
             return ZoneStatus.from_string(string)
 
+        @locked_coro
         @asyncio.coroutine
         def set_power(self, zone: int, power: bool):
             yield from self._protocol.send(_format_set_power(zone, power))
 
+        @locked_coro
         @asyncio.coroutine
         def set_mute(self, zone: int, mute: bool):
             yield from self._protocol.send(_format_set_mute(zone, mute))
 
+        @locked_coro
         @asyncio.coroutine
         def set_volume(self, zone: int, volume: int):
             yield from self._protocol.send(_format_set_volume(zone, volume))
 
+        @locked_coro
         @asyncio.coroutine
         def set_treble(self, zone: int, treble: int):
             yield from self._protocol.send(_format_set_treble(zone, treble))
 
+        @locked_coro
         @asyncio.coroutine
         def set_bass(self, zone: int, bass: int):
             yield from self._protocol.send(_format_set_bass(zone, bass))
 
+        @locked_coro
         @asyncio.coroutine
         def set_balance(self, zone: int, balance: int):
             yield from self._protocol.send(_format_set_balance(zone, balance))
 
+        @locked_coro
         @asyncio.coroutine
         def set_source(self, zone: int, source: int):
             yield from self._protocol.send(_format_set_source(zone, source))
 
+        @locked_coro
         @asyncio.coroutine
         def restore_zone(self, status: ZoneStatus):
-            # TODO reimplement lock
-            yield from self.set_power(status.zone, status.power)
-            yield from self.set_mute(status.zone, status.mute)
-            yield from self.set_volume(status.zone, status.volume)
-            yield from self.set_treble(status.zone, status.treble)
-            yield from self.set_bass(status.zone, status.bass)
-            yield from self.set_balance(status.zone, status.balance)
-            yield from self.set_source(status.zone, status.source)
+            yield from self._protocol.send(_format_set_power(status.zone, status.power))
+            yield from self._protocol.send(_format_set_mute(status.zone, status.mute))
+            yield from self._protocol.send(_format_set_volume(status.zone, status.volume))
+            yield from self._protocol.send(_format_set_treble(status.zone, status.treble))
+            yield from self._protocol.send(_format_set_bass(status.zone, status.bass))
+            yield from self._protocol.send(_format_set_balance(status.zone, status.balance))
+            yield from self._protocol.send(_format_set_source(status.zone, status.source))
 
     class MonopriceProtocol(asyncio.Protocol):
         def __init__(self, loop):
