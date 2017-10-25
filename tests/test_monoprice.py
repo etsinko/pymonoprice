@@ -11,10 +11,11 @@ class TestZoneStatus(unittest.TestCase):
 
     def test_zone_status_broken(self):
         self.assertIsNone(ZoneStatus.from_string(None))
-        self.assertIsNone(ZoneStatus.from_string('\r\n#>010001000010111210040\r\n#'))
+        self.assertIsNone(ZoneStatus.from_string('\r\n#>110001000010111210040\r\n#'))
         self.assertIsNone(ZoneStatus.from_string('\r\n#>a100010000101112100401\r\n#'))
         self.assertIsNone(ZoneStatus.from_string('\r\n#>a1000100dfsf112100401\r\n#'))
         self.assertIsNone(ZoneStatus.from_string('\r\n#>\r\n#'))
+
 
 class TestMonoprice(unittest.TestCase):
     def setUp(self):
@@ -22,9 +23,9 @@ class TestMonoprice(unittest.TestCase):
         self.monoprice = get_monoprice(create_dummy_port(self.responses))
 
     def test_zone_status(self):
-        self.responses[b'?1\r'] = b'\r\n#>0100010000131112100401\r\n#'
+        self.responses[b'?1\r'] = b'\r\n#>1100010000131112100401\r\n#'
         status = self.monoprice.zone_status(1)
-        self.assertEqual(1, status.zone)
+        self.assertEqual(11, status.zone)
         self.assertFalse(status.pa)
         self.assertTrue(status.power)
         self.assertFalse(status.mute)
@@ -38,103 +39,103 @@ class TestMonoprice(unittest.TestCase):
         self.assertEqual(0, len(self.responses))
 
     def test_set_power(self):
-        self.responses[b'<3PR01\r'] = b'\r\n#'
-        self.monoprice.set_power(3, True)
-        self.responses[b'<3PR01\r'] = b'\r\n#'
-        self.monoprice.set_power(3, 'True')
-        self.responses[b'<3PR01\r'] = b'\r\n#'
-        self.monoprice.set_power(3, 1)
-        self.responses[b'<3PR00\r'] = b'\r\n#'
-        self.monoprice.set_power(3, False)
-        self.responses[b'<3PR00\r'] = b'\r\n#'
-        self.monoprice.set_power(3, None)
-        self.responses[b'<3PR00\r'] = b'\r\n#'
-        self.monoprice.set_power(3, 0)
-        self.responses[b'<3PR00\r'] = b'\r\n#'
-        self.monoprice.set_power(3, '')
+        self.responses[b'<13PR01\r'] = b'\r\n#'
+        self.monoprice.set_power(13, True)
+        self.responses[b'<13PR01\r'] = b'\r\n#'
+        self.monoprice.set_power(13, 'True')
+        self.responses[b'<13PR01\r'] = b'\r\n#'
+        self.monoprice.set_power(13, 1)
+        self.responses[b'<13PR00\r'] = b'\r\n#'
+        self.monoprice.set_power(13, False)
+        self.responses[b'<13PR00\r'] = b'\r\n#'
+        self.monoprice.set_power(13, None)
+        self.responses[b'<13PR00\r'] = b'\r\n#'
+        self.monoprice.set_power(13, 0)
+        self.responses[b'<13PR00\r'] = b'\r\n#'
+        self.monoprice.set_power(13, '')
         self.assertEqual(0, len(self.responses))
         
     def test_set_mute(self):
-        self.responses[b'<3MU01\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, True)
-        self.responses[b'<3MU01\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, 'True')
-        self.responses[b'<3MU01\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, 1)
-        self.responses[b'<3MU00\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, False)
-        self.responses[b'<3MU00\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, None)
-        self.responses[b'<3MU00\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, 0)
-        self.responses[b'<3MU00\r'] = b'\r\n#'
-        self.monoprice.set_mute(3, '')
+        self.responses[b'<13MU01\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, True)
+        self.responses[b'<13MU01\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, 'True')
+        self.responses[b'<13MU01\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, 1)
+        self.responses[b'<13MU00\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, False)
+        self.responses[b'<13MU00\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, None)
+        self.responses[b'<13MU00\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, 0)
+        self.responses[b'<13MU00\r'] = b'\r\n#'
+        self.monoprice.set_mute(13, '')
         self.assertEqual(0, len(self.responses))
 
     def test_set_volume(self):
-        self.responses[b'<3VO01\r'] = b'\r\n#'
-        self.monoprice.set_volume(3, 1)
-        self.responses[b'<3VO38\r'] = b'\r\n#'
-        self.monoprice.set_volume(3, 100)
-        self.responses[b'<3VO00\r'] = b'\r\n#'
-        self.monoprice.set_volume(3, -100)
-        self.responses[b'<3VO20\r'] = b'\r\n#'
-        self.monoprice.set_volume(3, 20)
+        self.responses[b'<13VO01\r'] = b'\r\n#'
+        self.monoprice.set_volume(13, 1)
+        self.responses[b'<13VO38\r'] = b'\r\n#'
+        self.monoprice.set_volume(13, 100)
+        self.responses[b'<13VO00\r'] = b'\r\n#'
+        self.monoprice.set_volume(13, -100)
+        self.responses[b'<13VO20\r'] = b'\r\n#'
+        self.monoprice.set_volume(13, 20)
         self.assertEqual(0, len(self.responses))
 
     def test_set_treble(self):
-        self.responses[b'<3TR01\r'] = b'\r\n#'
-        self.monoprice.set_treble(3, 1)
-        self.responses[b'<3TR14\r'] = b'\r\n#'
-        self.monoprice.set_treble(3, 100)
-        self.responses[b'<3TR00\r'] = b'\r\n#'
-        self.monoprice.set_treble(3, -100)
-        self.responses[b'<3TR13\r'] = b'\r\n#'
-        self.monoprice.set_treble(3, 13)
+        self.responses[b'<13TR01\r'] = b'\r\n#'
+        self.monoprice.set_treble(13, 1)
+        self.responses[b'<13TR14\r'] = b'\r\n#'
+        self.monoprice.set_treble(13, 100)
+        self.responses[b'<13TR00\r'] = b'\r\n#'
+        self.monoprice.set_treble(13, -100)
+        self.responses[b'<13TR13\r'] = b'\r\n#'
+        self.monoprice.set_treble(13, 13)
         self.assertEqual(0, len(self.responses))
 
     def test_set_bass(self):
-        self.responses[b'<3BS01\r'] = b'\r\n#'
-        self.monoprice.set_bass(3, 1)
-        self.responses[b'<3BS14\r'] = b'\r\n#'
-        self.monoprice.set_bass(3, 100)
-        self.responses[b'<3BS00\r'] = b'\r\n#'
-        self.monoprice.set_bass(3, -100)
-        self.responses[b'<3BS13\r'] = b'\r\n#'
-        self.monoprice.set_bass(3, 13)
+        self.responses[b'<13BS01\r'] = b'\r\n#'
+        self.monoprice.set_bass(13, 1)
+        self.responses[b'<13BS14\r'] = b'\r\n#'
+        self.monoprice.set_bass(13, 100)
+        self.responses[b'<13BS00\r'] = b'\r\n#'
+        self.monoprice.set_bass(13, -100)
+        self.responses[b'<13BS13\r'] = b'\r\n#'
+        self.monoprice.set_bass(13, 13)
         self.assertEqual(0, len(self.responses))
 
     def test_set_balance(self):
-        self.responses[b'<3BL01\r'] = b'\r\n#'
-        self.monoprice.set_balance(3, 1)
-        self.responses[b'<3BL20\r'] = b'\r\n#'
-        self.monoprice.set_balance(3, 100)
-        self.responses[b'<3BL00\r'] = b'\r\n#'
-        self.monoprice.set_balance(3, -100)
-        self.responses[b'<3BL13\r'] = b'\r\n#'
-        self.monoprice.set_balance(3, 13)
+        self.responses[b'<13BL01\r'] = b'\r\n#'
+        self.monoprice.set_balance(13, 1)
+        self.responses[b'<13BL20\r'] = b'\r\n#'
+        self.monoprice.set_balance(13, 100)
+        self.responses[b'<13BL00\r'] = b'\r\n#'
+        self.monoprice.set_balance(13, -100)
+        self.responses[b'<13BL13\r'] = b'\r\n#'
+        self.monoprice.set_balance(13, 13)
         self.assertEqual(0, len(self.responses))
 
     def test_set_source(self):
-        self.responses[b'<3CH01\r'] = b'\r\n#'
-        self.monoprice.set_source(3, 1)
-        self.responses[b'<3CH06\r'] = b'\r\n#'
-        self.monoprice.set_source(3, 100)
-        self.responses[b'<3CH01\r'] = b'\r\n#'
-        self.monoprice.set_source(3, -100)
-        self.responses[b'<3CH03\r'] = b'\r\n#'
-        self.monoprice.set_source(3, 3)
+        self.responses[b'<13CH01\r'] = b'\r\n#'
+        self.monoprice.set_source(13, 1)
+        self.responses[b'<13CH06\r'] = b'\r\n#'
+        self.monoprice.set_source(13, 100)
+        self.responses[b'<13CH01\r'] = b'\r\n#'
+        self.monoprice.set_source(13, -100)
+        self.responses[b'<13CH03\r'] = b'\r\n#'
+        self.monoprice.set_source(13, 3)
         self.assertEqual(0, len(self.responses))
 
     def test_restore_zone(self):
-        zone = ZoneStatus.from_string('\r\n#>0100010000131112100401\r\n#')
-        self.responses[b'<1PR01\r'] = b'\r\n#'
-        self.responses[b'<1MU00\r'] = b'\r\n#'
-        self.responses[b'<1VO13\r'] = b'\r\n#'
-        self.responses[b'<1TR11\r'] = b'\r\n#'
-        self.responses[b'<1BS12\r'] = b'\r\n#'
-        self.responses[b'<1BL10\r'] = b'\r\n#'
-        self.responses[b'<1CH04\r'] = b'\r\n#'
+        zone = ZoneStatus.from_string('\r\n#>1100010000131112100401\r\n#')
+        self.responses[b'<11PR01\r'] = b'\r\n#'
+        self.responses[b'<11MU00\r'] = b'\r\n#'
+        self.responses[b'<11VO13\r'] = b'\r\n#'
+        self.responses[b'<11TR11\r'] = b'\r\n#'
+        self.responses[b'<11BS12\r'] = b'\r\n#'
+        self.responses[b'<11BL10\r'] = b'\r\n#'
+        self.responses[b'<11CH04\r'] = b'\r\n#'
         self.monoprice.restore_zone(zone)
         self.assertEqual(0, len(self.responses))
 
