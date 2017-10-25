@@ -1,9 +1,20 @@
 import unittest
 
+import serial
+
 from pymonoprice import (get_monoprice, get_async_monoprice, ZoneStatus)
 from tests import create_dummy_port
 import asyncio
 
+
+class TestZoneStatus(unittest.TestCase):
+
+    def test_zone_status_broken(self):
+        self.assertIsNone(ZoneStatus.from_string(None))
+        self.assertIsNone(ZoneStatus.from_string('\r\n#>010001000010111210040\r\n#'))
+        self.assertIsNone(ZoneStatus.from_string('\r\n#>a100010000101112100401\r\n#'))
+        self.assertIsNone(ZoneStatus.from_string('\r\n#>a1000100dfsf112100401\r\n#'))
+        self.assertIsNone(ZoneStatus.from_string('\r\n#>\r\n#'))
 
 class TestMonoprice(unittest.TestCase):
     def setUp(self):
@@ -24,15 +35,6 @@ class TestMonoprice(unittest.TestCase):
         self.assertEqual(10, status.balance)
         self.assertEqual(4, status.source)
         self.assertTrue(status.keypad)
-        self.assertEqual(0, len(self.responses))
-
-    def test_zone_status_broken(self):
-        self.responses[b'?1\r'] = b'\r\n#>010001000010111210040\r\n#'
-        self.assertIsNone(self.monoprice.zone_status(1))
-        self.responses[b'?1\r'] = b'\r\n#>a100010000101112100401\r\n#'
-        self.assertIsNone(self.monoprice.zone_status(1))
-        self.responses[b'?1\r'] = b'\r\n#>\r\n#'
-        self.assertIsNone(self.monoprice.zone_status(1))
         self.assertEqual(0, len(self.responses))
 
     def test_set_power(self):
@@ -136,6 +138,10 @@ class TestMonoprice(unittest.TestCase):
         self.monoprice.restore_zone(zone)
         self.assertEqual(0, len(self.responses))
 
+    def test_timeout(self):
+        with self.assertRaises(serial.SerialTimeoutException):
+            self.monoprice.set_source(3, 3)
+
 
 class TestAsyncMonoprice(TestMonoprice):
 
@@ -151,6 +157,10 @@ class TestAsyncMonoprice(TestMonoprice):
                     return loop.run_until_complete(monoprice.__getattribute__(item)(*args, **kwargs))
                 return f
         self.monoprice = DummyMonoprice()
+
+    def test_timeout(self):
+        with self.assertRaises(asyncio.TimeoutError):
+            self.monoprice.set_source(3, 3)
 
 if __name__ == '__main__':
     unittest.main()
