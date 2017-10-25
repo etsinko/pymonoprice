@@ -3,6 +3,7 @@ import functools
 import logging
 import re
 import serial
+from functools import wraps
 from serial_asyncio import create_serial_connection
 from threading import RLock
 
@@ -165,7 +166,7 @@ def _format_set_source(zone: int, source: int) -> bytes:
     return '<{}CH{:02}\r'.format(zone, source).encode()
 
 
-def get_sync_monoprice(port_url):
+def get_monoprice(port_url):
     """
     Return synchronous version of Monoprice interface
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
@@ -175,6 +176,7 @@ def get_sync_monoprice(port_url):
     lock = RLock()
 
     def synchronized(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             with lock:
                 return func(*args, **kwargs)
@@ -276,6 +278,7 @@ def get_async_monoprice(port_url, loop):
 
     def locked_coro(coro):
         @asyncio.coroutine
+        @wraps(coro)
         def wrapper(*args, **kwargs):
             with (yield from lock):
                 return (yield from coro(*args, **kwargs))
