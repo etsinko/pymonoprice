@@ -1,10 +1,11 @@
+import unittest
+
 from pymonoprice import (get_monoprice, get_async_monoprice, ZoneStatus)
-from unittest import TestCase
 from tests import create_dummy_port
 import asyncio
 
 
-class TestMonoprice(TestCase):
+class TestMonoprice(unittest.TestCase):
     def setUp(self):
         self.responses = {}
         self.monoprice = get_monoprice(create_dummy_port(self.responses))
@@ -150,3 +151,6 @@ class TestAsyncMonoprice(TestMonoprice):
                     return loop.run_until_complete(monoprice.__getattribute__(item)(*args, **kwargs))
                 return f
         self.monoprice = DummyMonoprice()
+
+if __name__ == '__main__':
+    unittest.main()
