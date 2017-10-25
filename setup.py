@@ -3,6 +3,8 @@
 import os
 import sys
 
+VERSION = '0.3'
+
 try:
     from setuptools import setup
 except ImportError:
@@ -33,13 +35,16 @@ SOFTWARE.
 """
 
 setup(name='pymonoprice',
-      version='0.2',
+      version=VERSION,
       description='Python API for talking to Monoprice 6-zone amplifier',
       url='https://github.com/etsinko/pymonoprice',
-      download_url='https://github.com/etsinko/pymonoprice/archive/0.2.tar.gz',
+      download_url='https://github.com/etsinko/pymonoprice/archive/{}.tar.gz'.format(VERSION),
       author='Egor Tsinko',
       author_email='etsinko@gmail.com',
       license='MIT',
       install_requires=['pyserial>=3.4'],
       packages=['pymonoprice'],
+      classifiers=['Development Status :: 4 - Beta',
+                   'Programming Language :: Python :: 3.4',
+                   'Programming Language :: Python :: 3.5'],
       zip_safe=True)
