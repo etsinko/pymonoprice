@@ -68,6 +68,6 @@ async def main(loop):
         await monoprice.set_power(zone_status.zone, False)
 
 loop = asyncio.get_event_loop()
-main(loop)
+loop.run_until_complete(main(loop))
 
 ```
