@@ -366,6 +366,8 @@ def get_async_monoprice(port_url, loop):
             with (yield from self._lock):
                 self._transport.serial.reset_output_buffer()
                 self._transport.serial.reset_input_buffer()
+                while not self.q.empty():
+                    self.q.get_nowait()
                 self._transport.write(request)
                 try:
                     while True:
