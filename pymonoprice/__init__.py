@@ -8,7 +8,7 @@ from serial_asyncio import create_serial_connection
 from threading import RLock
 
 _LOGGER = logging.getLogger(__name__)
-ZONE_PATTERN = re.compile('#>(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)')
+ZONE_PATTERN = re.compile('>(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)')
 
 EOL = b'\r\n#'
 LEN_EOL = len(EOL)
@@ -193,11 +193,9 @@ def get_monoprice(port_url):
             self._port.write_timeout = TIMEOUT
             self._port.open()
 
-        def _process_request(self, request: bytes, skip=0):
+        def _send_request(self, request: bytes):
             """
             :param request: request that is sent to the monoprice
-            :param skip: number of bytes to skip for end of transmission decoding
-            :return: ascii string returned by monoprice
             """
             _LOGGER.debug('Sending "%s"', request)
             # clear
@@ -206,6 +204,14 @@ def get_monoprice(port_url):
             # send
             self._port.write(request)
             self._port.flush()
+
+        def _process_request(self, request: bytes, skip=0):
+            """
+            :param request: request that is sent to the monoprice
+            :param skip: number of bytes to skip for end of transmission decoding
+            :return: ascii string returned by monoprice
+            """
+            self._send_request(request)
             # receive
             result = bytearray()
             while True:
@@ -220,10 +226,39 @@ def get_monoprice(port_url):
             _LOGGER.debug('Received "%s"', ret)
             return ret.decode('ascii')
 
+        def _process_request_sized(self, request: bytes, size: int):
+            """
+            :param request: request that is sent to the monoprice
+            :param size: number of bytes to read from the device
+            :return: ascii string returned by monoprice
+            """
+            self._send_request(request)
+            # receive
+            result = bytearray()
+            while len(result) < size:
+                c = self._port.read(1)
+                if not c:
+                    raise serial.SerialTimeoutException(
+                        'Connection timed out! Last received bytes {}'.format([hex(a) for a in result]))
+                result += c
+            ret = bytes(result)
+            _LOGGER.debug('Received "%s"', ret)
+            return ret.decode('ascii')
+
         @synchronized
         def zone_status(self, zone: int):
             # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
             return ZoneStatus.from_string(self._process_request(_format_zone_status_request(zone), skip=6))
+
+        @synchronized
+        def all_zone_status(self, zone: int):
+            # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
+            # Total 168 bytes expected
+            request = self._process_request_sized(_format_zone_status_request(zone), size=168)
+            return [
+                ZoneStatus.from_string(request[6 + i * 27 : 6 + (i + 1) * 27])
+                for i in range(6)
+            ]
 
         @synchronized
         def set_power(self, zone: int, power: bool):
@@ -294,6 +329,17 @@ def get_async_monoprice(port_url, loop):
             # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
             string = yield from self._protocol.send(_format_zone_status_request(zone), skip=6)
             return ZoneStatus.from_string(string)
+
+        @locked_coro
+        @asyncio.coroutine
+        def all_zone_status(self, zone: int):
+            # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
+            # Total 168 bytes expected
+            string = yield from self._protocol.send_sized(_format_zone_status_request(zone), size=168)
+            return [
+                ZoneStatus.from_string(string[6 + i * 27 : 6 + (i + 1) * 27])
+                for i in range(6)
+            ]
 
         @locked_coro
         @asyncio.coroutine
@@ -376,6 +422,27 @@ def get_async_monoprice(port_url, loop):
                             ret = bytes(result)
                             _LOGGER.debug('Received "%s"', ret)
                             return ret.decode('ascii')
+                except asyncio.TimeoutError:
+                    _LOGGER.error("Timeout during receiving response for command '%s', received='%s'", request, result)
+                    raise
+
+        @asyncio.coroutine
+        def send_sized(self, request: bytes, size):
+            yield from self._connected.wait()
+            result = bytearray()
+            # Only one transaction at a time
+            with (yield from self._lock):
+                self._transport.serial.reset_output_buffer()
+                self._transport.serial.reset_input_buffer()
+                while not self.q.empty():
+                    self.q.get_nowait()
+                self._transport.write(request)
+                try:
+                    while len(request) < size:
+                        result += yield from asyncio.wait_for(self.q.get(), TIMEOUT, loop=self._loop)
+                    ret = bytes(result)
+                    _LOGGER.debug('Received "%s"', ret)
+                    return ret.decode('ascii')
                 except asyncio.TimeoutError:
                     _LOGGER.error("Timeout during receiving response for command '%s', received='%s'", request, result)
                     raise
