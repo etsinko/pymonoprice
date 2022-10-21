@@ -35,6 +35,15 @@ def locked_coro(coro):
     return wrapper
 
 
+def connected(coro):
+    @wraps(coro)
+    async def wrapper(self, *args, **kwargs):
+        await self._connected.wait()
+        return await coro(self, *args, **kwargs)
+
+    return wrapper
+
+
 class ZoneStatus:
     def __init__(
         self,
@@ -340,13 +349,13 @@ class MonopriceAsync(Monoprice):
 
 
 class MonopriceProtocol(asyncio.Protocol):
-    def __init__(self, loop):
+    def __init__(self):
         super().__init__()
-        self._loop = loop
         self._lock = asyncio.Lock()
+        self._tasks = set()
         self._transport = None
-        self._connected = asyncio.Event(loop=loop)
-        self.q = asyncio.Queue(loop=loop)
+        self._connected = asyncio.Event()
+        self.q = asyncio.Queue()
 
     def connection_made(self, transport):
         self._transport = transport
@@ -354,60 +363,56 @@ class MonopriceProtocol(asyncio.Protocol):
         _LOGGER.debug("port opened %s", self._transport)
 
     def data_received(self, data):
-        asyncio.ensure_future(self.q.put(data), loop=self._loop)
+        task = asyncio.create_task(self.q.put(data))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
+    @connected
+    @locked_coro
     async def send(self, request: bytes, skip=0):
-        await self._connected.wait()
         result = bytearray()
-        # Only one transaction at a time
-        async with self._lock:
-            self._transport.serial.reset_output_buffer()
-            self._transport.serial.reset_input_buffer()
-            while not self.q.empty():
-                self.q.get_nowait()
-            self._transport.write(request)
-            try:
-                while True:
-                    result += await asyncio.wait_for(
-                        self.q.get(), TIMEOUT, loop=self._loop
-                    )
-                    if len(result) > skip and result[-LEN_EOL:] == EOL:
-                        ret = bytes(result)
-                        _LOGGER.debug('Received "%s"', ret)
-                        return ret.decode("ascii")
-            except asyncio.TimeoutError:
-                _LOGGER.error(
-                    "Timeout during receiving response for command '%s', received='%s'",
-                    request,
-                    result,
-                )
-                raise
+        self._transport.serial.reset_output_buffer()
+        self._transport.serial.reset_input_buffer()
+        while not self.q.empty():
+            self.q.get_nowait()
+        self._transport.write(request)
+        try:
+            while len(result) <= skip or result[-LEN_EOL:] != EOL:
+                result += await asyncio.wait_for(self.q.get(), TIMEOUT)
+        except asyncio.TimeoutError:
+            _LOGGER.error(
+                "Timeout during receiving response for command '%s', received='%s'",
+                request,
+                result,
+            )
+            raise
+        ret = bytes(result)
+        _LOGGER.debug('Received "%s"', ret)
+        return ret.decode("ascii")
 
+    @connected
+    @locked_coro
     async def send_sized(self, request: bytes, size):
-        await self._connected.wait()
+        self._transport.serial.reset_output_buffer()
+        self._transport.serial.reset_input_buffer()
+        while not self.q.empty():
+            self.q.get_nowait()
+        self._transport.write(request)
+
         result = bytearray()
-        # Only one transaction at a time
-        async with self._lock:
-            self._transport.serial.reset_output_buffer()
-            self._transport.serial.reset_input_buffer()
-            while not self.q.empty():
-                self.q.get_nowait()
-            self._transport.write(request)
-            try:
-                while len(result) < size:
-                    result += await asyncio.wait_for(
-                        self.q.get(), TIMEOUT, loop=self._loop
-                    )
-                ret = bytes(result)
-                _LOGGER.debug('Received "%s"', ret)
-                return ret.decode("ascii")
-            except asyncio.TimeoutError:
-                _LOGGER.error(
-                    "Timeout during receiving response for command '%s', received='%s'",
-                    request,
-                    result,
-                )
-                raise
+        try:
+            while len(result) < size:
+                result += await asyncio.wait_for(self.q.get(), TIMEOUT)
+        except asyncio.TimeoutError:
+            _LOGGER.error(
+                "Timeout during receiving response for command '%s', received='%s'",
+                request,
+                result,
+            )
+            raise
+        ret = bytes(result)
+        _LOGGER.debug('Received "%s"', ret)
+        return ret.decode("ascii")
 
 
 # Helpers
@@ -462,7 +467,7 @@ def get_monoprice(port_url):
     return MonopriceSync(port_url, lock)
 
 
-async def get_async_monoprice(port_url, loop):
+async def get_async_monoprice(port_url):
     """
     Return asynchronous version of Monoprice interface
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
@@ -471,7 +476,8 @@ async def get_async_monoprice(port_url, loop):
 
     lock = asyncio.Lock()
 
+    loop = asyncio.get_running_loop()
     _, protocol = await create_serial_connection(
-        loop, functools.partial(MonopriceProtocol, loop), port_url, baudrate=9600
+        loop, MonopriceProtocol, port_url, baudrate=9600
     )
     return MonopriceAsync(protocol, lock)

@@ -149,7 +149,7 @@ class TestAsyncMonoprice(TestMonoprice):
     def setUp(self):
         self.responses = {}
         loop = asyncio.get_event_loop()
-        monoprice = loop.run_until_complete(get_async_monoprice(create_dummy_port(self.responses), loop))
+        monoprice = loop.run_until_complete(get_async_monoprice(create_dummy_port(self.responses)))
 
         # Dummy monoprice that converts async to sync
         class DummyMonoprice():
