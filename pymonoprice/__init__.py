@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import asyncio
-import functools
 import logging
 import re
 import serial
 from functools import wraps
-from serial_asyncio import create_serial_connection
+from serial_asyncio import create_serial_connection, SerialTransport
 from threading import RLock
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class ZoneStatus:
         balance: int,  # 00 - left, 10 - center, 20 right
         source: int,
         keypad: bool,
-    ):
+    ) -> None:
         self.zone = zone
         self.pa = bool(pa)
         self.power = bool(power)
@@ -72,7 +73,7 @@ class ZoneStatus:
         self.keypad = bool(keypad)
 
     @classmethod
-    def from_string(cls, string: str):
+    def from_string(cls, string: str) -> ZoneStatus | None:
         if not string:
             return None
         match = re.search(ZONE_PATTERN, string)
@@ -159,7 +160,7 @@ class Monoprice:
 
 
 class MonopriceSync(Monoprice):
-    def __init__(self, port_url, lock):
+    def __init__(self, port_url: str, lock: RLock) -> None:
         self._lock = lock
         self._port = serial.serial_for_url(port_url, do_not_open=True)
         self._port.baudrate = 9600
@@ -170,7 +171,7 @@ class MonopriceSync(Monoprice):
         self._port.write_timeout = TIMEOUT
         self._port.open()
 
-    def _send_request(self, request: bytes):
+    def _send_request(self, request: bytes) -> None:
         """
         :param request: request that is sent to the monoprice
         """
@@ -182,7 +183,7 @@ class MonopriceSync(Monoprice):
         self._port.write(request)
         self._port.flush()
 
-    def _process_request(self, request: bytes, skip=0):
+    def _process_request(self, request: bytes, skip: int = 0) -> str:
         """
         :param request: request that is sent to the monoprice
         :param skip: number of bytes to skip for end of transmission decoding
@@ -206,7 +207,7 @@ class MonopriceSync(Monoprice):
         _LOGGER.debug('Received "%s"', ret)
         return ret.decode("ascii")
 
-    def _process_request_sized(self, request: bytes, size: int):
+    def _process_request_sized(self, request: bytes, size: int) -> str:
         """
         :param request: request that is sent to the monoprice
         :param size: number of bytes to read from the device
@@ -229,14 +230,14 @@ class MonopriceSync(Monoprice):
         return ret.decode("ascii")
 
     @synchronized
-    def zone_status(self, zone: int):
+    def zone_status(self, zone: int) -> ZoneStatus | None:
         # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
         return ZoneStatus.from_string(
             self._process_request(_format_zone_status_request(zone), skip=6)
         )
 
     @synchronized
-    def all_zone_status(self, zone: int):
+    def all_zone_status(self, zone: int) -> list[ZoneStatus | None]:
         # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
         # Total 168 bytes expected
         request = self._process_request_sized(
@@ -248,35 +249,35 @@ class MonopriceSync(Monoprice):
         ]
 
     @synchronized
-    def set_power(self, zone: int, power: bool):
+    def set_power(self, zone: int, power: bool) -> None:
         self._process_request(_format_set_power(zone, power))
 
     @synchronized
-    def set_mute(self, zone: int, mute: bool):
+    def set_mute(self, zone: int, mute: bool) -> None:
         self._process_request(_format_set_mute(zone, mute))
 
     @synchronized
-    def set_volume(self, zone: int, volume: int):
+    def set_volume(self, zone: int, volume: int) -> None:
         self._process_request(_format_set_volume(zone, volume))
 
     @synchronized
-    def set_treble(self, zone: int, treble: int):
+    def set_treble(self, zone: int, treble: int) -> None:
         self._process_request(_format_set_treble(zone, treble))
 
     @synchronized
-    def set_bass(self, zone: int, bass: int):
+    def set_bass(self, zone: int, bass: int) -> None:
         self._process_request(_format_set_bass(zone, bass))
 
     @synchronized
-    def set_balance(self, zone: int, balance: int):
+    def set_balance(self, zone: int, balance: int) -> None:
         self._process_request(_format_set_balance(zone, balance))
 
     @synchronized
-    def set_source(self, zone: int, source: int):
+    def set_source(self, zone: int, source: int) -> None:
         self._process_request(_format_set_source(zone, source))
 
     @synchronized
-    def restore_zone(self, status: ZoneStatus):
+    def restore_zone(self, status: ZoneStatus) -> None:
         self.set_power(status.zone, status.power)
         self.set_mute(status.zone, status.mute)
         self.set_volume(status.zone, status.volume)
@@ -287,18 +288,18 @@ class MonopriceSync(Monoprice):
 
 
 class MonopriceAsync(Monoprice):
-    def __init__(self, monoprice_protocol, lock):
+    def __init__(self, monoprice_protocol: MonopriceProtocol, lock: asyncio.Lock) -> None:
         self._protocol = monoprice_protocol
         self._lock = lock
 
     @locked_coro
-    async def zone_status(self, zone: int):
+    async def zone_status(self, zone: int) -> ZoneStatus | None:
         # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
         string = await self._protocol.send(_format_zone_status_request(zone), skip=6)
         return ZoneStatus.from_string(string)
 
     @locked_coro
-    async def all_zone_status(self, zone: int):
+    async def all_zone_status(self, zone: int) -> list[ZoneStatus | None]:
         # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
         # Total 168 bytes expected
         string = await self._protocol.send_sized(
@@ -310,35 +311,35 @@ class MonopriceAsync(Monoprice):
         ]
 
     @locked_coro
-    async def set_power(self, zone: int, power: bool):
+    async def set_power(self, zone: int, power: bool) -> None:
         await self._protocol.send(_format_set_power(zone, power))
 
     @locked_coro
-    async def set_mute(self, zone: int, mute: bool):
+    async def set_mute(self, zone: int, mute: bool) -> None:
         await self._protocol.send(_format_set_mute(zone, mute))
 
     @locked_coro
-    async def set_volume(self, zone: int, volume: int):
+    async def set_volume(self, zone: int, volume: int) -> None:
         await self._protocol.send(_format_set_volume(zone, volume))
 
     @locked_coro
-    async def set_treble(self, zone: int, treble: int):
+    async def set_treble(self, zone: int, treble: int) -> None:
         await self._protocol.send(_format_set_treble(zone, treble))
 
     @locked_coro
-    async def set_bass(self, zone: int, bass: int):
+    async def set_bass(self, zone: int, bass: int) -> None:
         await self._protocol.send(_format_set_bass(zone, bass))
 
     @locked_coro
-    async def set_balance(self, zone: int, balance: int):
+    async def set_balance(self, zone: int, balance: int) -> None:
         await self._protocol.send(_format_set_balance(zone, balance))
 
     @locked_coro
-    async def set_source(self, zone: int, source: int):
+    async def set_source(self, zone: int, source: int) -> None:
         await self._protocol.send(_format_set_source(zone, source))
 
     @locked_coro
-    async def restore_zone(self, status: ZoneStatus):
+    async def restore_zone(self, status: ZoneStatus) -> None:
         await self._protocol.send(_format_set_power(status.zone, status.power))
         await self._protocol.send(_format_set_mute(status.zone, status.mute))
         await self._protocol.send(_format_set_volume(status.zone, status.volume))
@@ -349,27 +350,27 @@ class MonopriceAsync(Monoprice):
 
 
 class MonopriceProtocol(asyncio.Protocol):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._lock = asyncio.Lock()
-        self._tasks = set()
-        self._transport = None
+        self._tasks: set[asyncio.Task] = set()
+        self._transport: SerialTransport = None
         self._connected = asyncio.Event()
-        self.q = asyncio.Queue()
+        self.q: asyncio.Queue[bytes] = asyncio.Queue()
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: SerialTransport) -> None:
         self._transport = transport
         self._connected.set()
         _LOGGER.debug("port opened %s", self._transport)
 
-    def data_received(self, data):
+    def data_received(self, data: bytes) -> None:
         task = asyncio.create_task(self.q.put(data))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
     @connected
     @locked_coro
-    async def send(self, request: bytes, skip=0):
+    async def send(self, request: bytes, skip=0) -> str:
         result = bytearray()
         self._transport.serial.reset_output_buffer()
         self._transport.serial.reset_input_buffer()
@@ -392,7 +393,7 @@ class MonopriceProtocol(asyncio.Protocol):
 
     @connected
     @locked_coro
-    async def send_sized(self, request: bytes, size):
+    async def send_sized(self, request: bytes, size: int) -> str:
         self._transport.serial.reset_output_buffer()
         self._transport.serial.reset_input_buffer()
         while not self.q.empty():
@@ -455,7 +456,7 @@ def _format_set_source(zone: int, source: int) -> bytes:
     return "<{}CH{:02}\r".format(zone, source).encode()
 
 
-def get_monoprice(port_url):
+def get_monoprice(port_url: str) -> Monoprice:
     """
     Return synchronous version of Monoprice interface
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
@@ -467,7 +468,7 @@ def get_monoprice(port_url):
     return MonopriceSync(port_url, lock)
 
 
-async def get_async_monoprice(port_url):
+async def get_async_monoprice(port_url: str) -> MonopriceAsync:
     """
     Return asynchronous version of Monoprice interface
     :param port_url: serial port, i.e. '/dev/ttyUSB0'
