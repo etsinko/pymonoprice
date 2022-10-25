@@ -1,0 +1,3 @@
+include *.txt
+include .coveragerc
+recursive-include tests *.py
