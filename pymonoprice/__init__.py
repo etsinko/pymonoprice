@@ -8,6 +8,14 @@ from dataclasses import dataclass
 from functools import wraps
 from serial_asyncio import create_serial_connection, SerialTransport
 from threading import RLock
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Awaitable, Callable, Concatenate, ParamSpec, TypeVar
+
+    _P = ParamSpec("_P")
+    _T = TypeVar("_T")
+    _AsyncLockable = TypeVar("_AsyncLockable", "MonopriceAsync", "MonopriceProtocol")
 
 _LOGGER = logging.getLogger(__name__)
 ZONE_PATTERN = re.compile(
@@ -19,27 +27,35 @@ LEN_EOL = len(EOL)
 TIMEOUT = 2  # Number of seconds before serial operation timeout
 
 
-def synchronized(func):
+def synchronized(
+    func: Callable[Concatenate[Monoprice, _P], _T]
+) -> Callable[Concatenate[Monoprice, _P], _T]:
     @wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: Monoprice, *args: _P.args, **kwargs: _P.kwargs) -> _T:
         with self._lock:
             return func(self, *args, **kwargs)
 
     return wrapper
 
 
-def locked_coro(coro):
+def locked_coro(
+    coro: Callable[Concatenate[_AsyncLockable, _P], Awaitable[_T]]
+) -> Callable[Concatenate[_AsyncLockable, _P], Awaitable[_T]]:
     @wraps(coro)
-    async def wrapper(self, *args, **kwargs):
+    async def wrapper(self: _AsyncLockable, *args: _P.args, **kwargs: _P.kwargs) -> _T:
         async with self._lock:
-            return await coro(self, *args, **kwargs)
+            return await coro(self, *args, **kwargs)  # type: ignore[return-value]
 
     return wrapper
 
 
-def connected(coro):
+def connected(
+    coro: Callable[Concatenate[MonopriceProtocol, _P], Awaitable[_T]]
+) -> Callable[Concatenate[MonopriceProtocol, _P], Awaitable[_T]]:
     @wraps(coro)
-    async def wrapper(self, *args, **kwargs):
+    async def wrapper(
+        self: MonopriceProtocol, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
         await self._connected.wait()
         return await coro(self, *args, **kwargs)
 
@@ -385,7 +401,7 @@ class MonopriceProtocol(asyncio.Protocol):
     def __init__(self) -> None:
         super().__init__()
         self._lock = asyncio.Lock()
-        self._tasks: set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task[None]] = set()
         self._transport: SerialTransport = None
         self._connected = asyncio.Event()
         self.q: asyncio.Queue[bytes] = asyncio.Queue()
@@ -402,7 +418,7 @@ class MonopriceProtocol(asyncio.Protocol):
 
     @connected
     @locked_coro
-    async def send(self, request: bytes, skip=0) -> str:
+    async def send(self, request: bytes, skip: int = 0) -> str:
         result = bytearray()
         self._transport.serial.reset_output_buffer()
         self._transport.serial.reset_input_buffer()
