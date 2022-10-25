@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import serial
+from dataclasses import dataclass
 from functools import wraps
 from serial_asyncio import create_serial_connection, SerialTransport
 from threading import RLock
@@ -45,32 +46,19 @@ def connected(coro):
     return wrapper
 
 
+@dataclass
 class ZoneStatus:
-    def __init__(
-        self,
-        zone: int,
-        pa: bool,
-        power: bool,
-        mute: bool,
-        do_not_disturb: bool,
-        volume: int,  # 0 - 38
-        treble: int,  # 0 -> -7,  14-> +7
-        bass: int,  # 0 -> -7,  14-> +7
-        balance: int,  # 00 - left, 10 - center, 20 right
-        source: int,
-        keypad: bool,
-    ) -> None:
-        self.zone = zone
-        self.pa = bool(pa)
-        self.power = bool(power)
-        self.mute = bool(mute)
-        self.do_not_disturb = bool(do_not_disturb)
-        self.volume = volume
-        self.treble = treble
-        self.bass = bass
-        self.balance = balance
-        self.source = source
-        self.keypad = bool(keypad)
+    zone: int
+    pa: bool
+    power: bool
+    mute: bool
+    do_not_disturb: bool
+    volume: int  # 0 - 38
+    treble: int  # 0 -> -7,  14-> +7
+    bass: int  # 0 -> -7,  14-> +7
+    balance: int  # 00 - left, 10 - center, 20 right
+    source: int
+    keypad: bool
 
     @classmethod
     def from_string(cls, string: str) -> ZoneStatus | None:
@@ -79,7 +67,32 @@ class ZoneStatus:
         match = re.search(ZONE_PATTERN, string)
         if not match:
             return None
-        return ZoneStatus(*[int(m) for m in match.groups()])  # type: ignore[arg-type]
+        (
+            zone,
+            pa,
+            power,
+            mute,
+            do_not_disturb,
+            volume,
+            treble,
+            bass,
+            balance,
+            source,
+            keypad,
+        ) = map(int, match.groups())
+        return ZoneStatus(
+            zone,
+            bool(pa),
+            bool(power),
+            bool(mute),
+            bool(do_not_disturb),
+            volume,
+            treble,
+            bass,
+            balance,
+            source,
+            bool(keypad),
+        )
 
 
 class Monoprice:
@@ -258,7 +271,9 @@ class Monoprice:
 
 
 class MonopriceAsync:
-    def __init__(self, monoprice_protocol: MonopriceProtocol, lock: asyncio.Lock) -> None:
+    def __init__(
+        self, monoprice_protocol: MonopriceProtocol, lock: asyncio.Lock
+    ) -> None:
         """
         Async Monoprice amplifier interface
         """
