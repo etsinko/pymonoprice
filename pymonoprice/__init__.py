@@ -83,84 +83,10 @@ class ZoneStatus:
 
 
 class Monoprice:
-    """
-    Monoprice amplifier interface
-    """
-
-    def zone_status(self, zone: int):
-        """
-        Get the structure representing the status of the zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :return: status of the zone or None
-        """
-        raise NotImplementedError()
-
-    def set_power(self, zone: int, power: bool):
-        """
-        Turn zone on or off
-        :param zone: zone 11..16, 21..26, 31..36
-        :param power: True to turn on, False to turn off
-        """
-        raise NotImplementedError()
-
-    def set_mute(self, zone: int, mute: bool):
-        """
-        Mute zone on or off
-        :param zone: zone 11..16, 21..26, 31..36
-        :param mute: True to mute, False to unmute
-        """
-        raise NotImplementedError()
-
-    def set_volume(self, zone: int, volume: int):
-        """
-        Set volume for zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :param volume: integer from 0 to 38 inclusive
-        """
-        raise NotImplementedError()
-
-    def set_treble(self, zone: int, treble: int):
-        """
-        Set treble for zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :param treble: integer from 0 to 14 inclusive, where 0 is -7 treble and 14 is +7
-        """
-        raise NotImplementedError()
-
-    def set_bass(self, zone: int, bass: int):
-        """
-        Set bass for zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :param bass: integer from 0 to 14 inclusive, where 0 is -7 bass and 14 is +7
-        """
-        raise NotImplementedError()
-
-    def set_balance(self, zone: int, balance: int):
-        """
-        Set balance for zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :param balance: integer from 0 to 20 inclusive, where 0 is -10(left), 0 is center and 20 is +10 (right)
-        """
-        raise NotImplementedError()
-
-    def set_source(self, zone: int, source: int):
-        """
-        Set source for zone
-        :param zone: zone 11..16, 21..26, 31..36
-        :param source: integer from 0 to 6 inclusive
-        """
-        raise NotImplementedError()
-
-    def restore_zone(self, status: ZoneStatus):
-        """
-        Restores zone to it's previous state
-        :param status: zone state to restore
-        """
-        raise NotImplementedError()
-
-
-class MonopriceSync(Monoprice):
     def __init__(self, port_url: str, lock: RLock) -> None:
+        """
+        Monoprice amplifier interface
+        """
         self._lock = lock
         self._port = serial.serial_for_url(port_url, do_not_open=True)
         self._port.baudrate = 9600
@@ -231,6 +157,11 @@ class MonopriceSync(Monoprice):
 
     @synchronized
     def zone_status(self, zone: int) -> ZoneStatus | None:
+        """
+        Get the structure representing the status of the zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :return: status of the zone or None
+        """
         # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
         return ZoneStatus.from_string(
             self._process_request(_format_zone_status_request(zone), skip=6)
@@ -250,34 +181,73 @@ class MonopriceSync(Monoprice):
 
     @synchronized
     def set_power(self, zone: int, power: bool) -> None:
+        """
+        Turn zone on or off
+        :param zone: zone 11..16, 21..26, 31..36
+        :param power: True to turn on, False to turn off
+        """
         self._process_request(_format_set_power(zone, power))
 
     @synchronized
     def set_mute(self, zone: int, mute: bool) -> None:
+        """
+        Mute zone on or off
+        :param zone: zone 11..16, 21..26, 31..36
+        :param mute: True to mute, False to unmute
+        """
         self._process_request(_format_set_mute(zone, mute))
 
     @synchronized
     def set_volume(self, zone: int, volume: int) -> None:
+        """
+        Set volume for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param volume: integer from 0 to 38 inclusive
+        """
         self._process_request(_format_set_volume(zone, volume))
 
     @synchronized
     def set_treble(self, zone: int, treble: int) -> None:
+        """
+        Set treble for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param treble: integer from 0 to 14 inclusive, where 0 is -7 treble and 14 is +7
+        """
         self._process_request(_format_set_treble(zone, treble))
 
     @synchronized
     def set_bass(self, zone: int, bass: int) -> None:
+        """
+        Set bass for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param bass: integer from 0 to 14 inclusive, where 0 is -7 bass and 14 is +7
+        """
         self._process_request(_format_set_bass(zone, bass))
 
     @synchronized
     def set_balance(self, zone: int, balance: int) -> None:
+        """
+        Set balance for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param balance: integer from 0 to 20 inclusive, where 0 is -10(left), 0 is center and 20 is +10 (right)
+        """
         self._process_request(_format_set_balance(zone, balance))
 
     @synchronized
     def set_source(self, zone: int, source: int) -> None:
+        """
+        Set source for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param source: integer from 0 to 6 inclusive
+        """
         self._process_request(_format_set_source(zone, source))
 
     @synchronized
     def restore_zone(self, status: ZoneStatus) -> None:
+        """
+        Restores zone to it's previous state
+        :param status: zone state to restore
+        """
         self.set_power(status.zone, status.power)
         self.set_mute(status.zone, status.mute)
         self.set_volume(status.zone, status.volume)
@@ -287,13 +257,21 @@ class MonopriceSync(Monoprice):
         self.set_source(status.zone, status.source)
 
 
-class MonopriceAsync(Monoprice):
+class MonopriceAsync:
     def __init__(self, monoprice_protocol: MonopriceProtocol, lock: asyncio.Lock) -> None:
+        """
+        Async Monoprice amplifier interface
+        """
         self._protocol = monoprice_protocol
         self._lock = lock
 
     @locked_coro
     async def zone_status(self, zone: int) -> ZoneStatus | None:
+        """
+        Get the structure representing the status of the zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :return: status of the zone or None
+        """
         # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
         string = await self._protocol.send(_format_zone_status_request(zone), skip=6)
         return ZoneStatus.from_string(string)
@@ -312,34 +290,73 @@ class MonopriceAsync(Monoprice):
 
     @locked_coro
     async def set_power(self, zone: int, power: bool) -> None:
+        """
+        Turn zone on or off
+        :param zone: zone 11..16, 21..26, 31..36
+        :param power: True to turn on, False to turn off
+        """
         await self._protocol.send(_format_set_power(zone, power))
 
     @locked_coro
     async def set_mute(self, zone: int, mute: bool) -> None:
+        """
+        Mute zone on or off
+        :param zone: zone 11..16, 21..26, 31..36
+        :param mute: True to mute, False to unmute
+        """
         await self._protocol.send(_format_set_mute(zone, mute))
 
     @locked_coro
     async def set_volume(self, zone: int, volume: int) -> None:
+        """
+        Set volume for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param volume: integer from 0 to 38 inclusive
+        """
         await self._protocol.send(_format_set_volume(zone, volume))
 
     @locked_coro
     async def set_treble(self, zone: int, treble: int) -> None:
+        """
+        Set treble for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param treble: integer from 0 to 14 inclusive, where 0 is -7 treble and 14 is +7
+        """
         await self._protocol.send(_format_set_treble(zone, treble))
 
     @locked_coro
     async def set_bass(self, zone: int, bass: int) -> None:
+        """
+        Set bass for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param bass: integer from 0 to 14 inclusive, where 0 is -7 bass and 14 is +7
+        """
         await self._protocol.send(_format_set_bass(zone, bass))
 
     @locked_coro
     async def set_balance(self, zone: int, balance: int) -> None:
+        """
+        Set balance for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param balance: integer from 0 to 20 inclusive, where 0 is -10(left), 0 is center and 20 is +10 (right)
+        """
         await self._protocol.send(_format_set_balance(zone, balance))
 
     @locked_coro
     async def set_source(self, zone: int, source: int) -> None:
+        """
+        Set source for zone
+        :param zone: zone 11..16, 21..26, 31..36
+        :param source: integer from 0 to 6 inclusive
+        """
         await self._protocol.send(_format_set_source(zone, source))
 
     @locked_coro
     async def restore_zone(self, status: ZoneStatus) -> None:
+        """
+        Restores zone to it's previous state
+        :param status: zone state to restore
+        """
         await self._protocol.send(_format_set_power(status.zone, status.power))
         await self._protocol.send(_format_set_mute(status.zone, status.mute))
         await self._protocol.send(_format_set_volume(status.zone, status.volume))
@@ -465,7 +482,7 @@ def get_monoprice(port_url: str) -> Monoprice:
 
     lock = RLock()
 
-    return MonopriceSync(port_url, lock)
+    return Monoprice(port_url, lock)
 
 
 async def get_async_monoprice(port_url: str) -> MonopriceAsync:
