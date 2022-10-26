@@ -1,5 +1,5 @@
 ## Status
-[![Build Status](https://travis-ci.org/etsinko/pymonoprice.svg?branch=master)](https://travis-ci.org/etsinko/pymonoprice)[![Coverage Status](https://coveralls.io/repos/github/etsinko/pymonoprice/badge.svg)](https://coveralls.io/github/etsinko/pymonoprice)
+[![Build Status](https://github.com/etsinko/pymonoprice/actions/workflows/ci.yml/badge.svg)](https://github.com/etsinko/pymonoprice/actions/workflows/ci.yml)[![Coverage Status](https://coveralls.io/repos/github/etsinko/pymonoprice/badge.svg)](https://coveralls.io/github/etsinko/pymonoprice)
 
 # pymonoprice
 Python3 interface implementation for Monoprice 6 zone amplifier
