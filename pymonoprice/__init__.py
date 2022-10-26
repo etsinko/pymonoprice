@@ -77,6 +77,12 @@ class ZoneStatus:
     keypad: bool
 
     @classmethod
+    def from_strings(cls, strings: list[str]) -> list[ZoneStatus]:
+        if not strings:
+            return list()
+        return [zone for zone in (ZoneStatus.from_string(s) for s in strings) if zone is not None]
+
+    @classmethod
     def from_string(cls, string: str) -> ZoneStatus | None:
         if not string:
             return None
@@ -138,15 +144,16 @@ class Monoprice:
         self._port.write(request)
         self._port.flush()
 
-    def _process_request(self, request: bytes, skip: int = 0) -> str:
+    def _process_request(self, request: bytes, num_eols_to_read: int = 1) -> str:
         """
         :param request: request that is sent to the monoprice
-        :param skip: number of bytes to skip for end of transmission decoding
+        :param num_eols_to_read: number of EOL sequences to read. When last EOL is read, reading stops
         :return: ascii string returned by monoprice
         """
         self._send_request(request)
         # receive
         result = bytearray()
+        count = None
         while True:
             c = self._port.read(1)
             if not c:
@@ -156,30 +163,9 @@ class Monoprice:
                     )
                 )
             result += c
-            if len(result) > skip and result[-LEN_EOL:] == EOL:
+            count = _subsequence_count(result, EOL, count)
+            if count[1] >= num_eols_to_read:
                 break
-        ret = bytes(result)
-        _LOGGER.debug('Received "%s"', ret)
-        return ret.decode("ascii")
-
-    def _process_request_sized(self, request: bytes, size: int) -> str:
-        """
-        :param request: request that is sent to the monoprice
-        :param size: number of bytes to read from the device
-        :return: ascii string returned by monoprice
-        """
-        self._send_request(request)
-        # receive
-        result = bytearray()
-        while len(result) < size:
-            c = self._port.read(1)
-            if not c:
-                raise serial.SerialTimeoutException(
-                    "Connection timed out! Last received bytes {}".format(
-                        [hex(a) for a in result]
-                    )
-                )
-            result += c
         ret = bytes(result)
         _LOGGER.debug('Received "%s"', ret)
         return ret.decode("ascii")
@@ -191,22 +177,25 @@ class Monoprice:
         :param zone: zone 11..16, 21..26, 31..36
         :return: status of the zone or None
         """
-        # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
+        # Reading two lines as the response is in the form \r\n#>110001000010111210040\r\n#
         return ZoneStatus.from_string(
-            self._process_request(_format_zone_status_request(zone), skip=6)
+            self._process_request(_format_zone_status_request(zone), num_eols_to_read=2)
         )
 
     @synchronized
-    def all_zone_status(self, zone: int) -> list[ZoneStatus | None]:
-        # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
-        # Total 168 bytes expected
-        request = self._process_request_sized(
-            _format_zone_status_request(zone), size=168
+    def all_zone_status(self, unit: int) -> list[ZoneStatus]:
+        """
+        Get the structure representing the status of all zones in a unit
+        :param unit: 1, 2, 3
+        :return: list of all statuses of the unit's zones or empty list if unit number is incorrect
+        """
+        if unit < 1 or unit > 3:
+            return []
+        # Reading 7 lines, since response starts with EOL and each zone's status is followed by EOL
+        response = self._process_request(
+            _format_all_zones_status_request(unit), num_eols_to_read=7
         )
-        return [
-            ZoneStatus.from_string(request[6 + i * 27 : 6 + (i + 1) * 27])
-            for i in range(6)
-        ]
+        return ZoneStatus.from_strings(response.split(sep=EOL.decode('ascii')))
 
     @synchronized
     def set_power(self, zone: int, power: bool) -> None:
@@ -303,21 +292,24 @@ class MonopriceAsync:
         :param zone: zone 11..16, 21..26, 31..36
         :return: status of the zone or None
         """
-        # Ignore first 6 bytes as they will contain 3 byte command and 3 bytes of EOL
-        string = await self._protocol.send(_format_zone_status_request(zone), skip=6)
+        # Reading two lines as the response is in the form \r\n#>110001000010111210040\r\n#
+        string = await self._protocol.send(_format_zone_status_request(zone), num_eols_to_read=2)
         return ZoneStatus.from_string(string)
 
     @locked_coro
-    async def all_zone_status(self, zone: int) -> list[ZoneStatus | None]:
-        # size = (3 byte echo + 3 byte EOL) + 6 * (24 byte data + 3 byte EOL)
-        # Total 168 bytes expected
-        string = await self._protocol.send_sized(
-            _format_zone_status_request(zone), size=168
+    async def all_zone_status(self, unit: int) -> list[ZoneStatus]:
+        """
+        Get the structure representing the status of all zones in a unit
+        :param unit: 1, 2, 3
+        :return: list of all statuses of the unit's zones or empty list if unit number is incorrect
+        """
+        if unit < 1 or unit > 3:
+            return []
+        # Reading 7 lines, since response starts with EOL and each zone's status is followed by EOL
+        response = await self._protocol.send(
+            _format_all_zones_status_request(unit), num_eols_to_read=7
         )
-        return [
-            ZoneStatus.from_string(string[6 + i * 27 : 6 + (i + 1) * 27])
-            for i in range(6)
-        ]
+        return ZoneStatus.from_strings(response.split(sep=EOL.decode('ascii')))
 
     @locked_coro
     async def set_power(self, zone: int, power: bool) -> None:
@@ -418,16 +410,25 @@ class MonopriceProtocol(asyncio.Protocol):
 
     @connected
     @locked_coro
-    async def send(self, request: bytes, skip: int = 0) -> str:
+    async def send(self, request: bytes, num_eols_to_read: int = 1) -> str:
+        """
+        :param request: request that is sent to the monoprice
+        :param num_eols_to_read: number of EOL sequences to read. When last EOL is read, reading stops
+        :return: ascii string returned by monoprice
+        """
         result = bytearray()
         self._transport.serial.reset_output_buffer()
         self._transport.serial.reset_input_buffer()
         while not self.q.empty():
             self.q.get_nowait()
         self._transport.write(request)
+        count = None
         try:
-            while len(result) <= skip or result[-LEN_EOL:] != EOL:
+            while True:
                 result += await asyncio.wait_for(self.q.get(), TIMEOUT)
+                count = _subsequence_count(result, EOL, count)
+                if count[1] >= num_eols_to_read:
+                    break
         except asyncio.TimeoutError:
             _LOGGER.error(
                 "Timeout during receiving response for command '%s', received='%s'",
@@ -438,37 +439,28 @@ class MonopriceProtocol(asyncio.Protocol):
         ret = bytes(result)
         _LOGGER.debug('Received "%s"', ret)
         return ret.decode("ascii")
-
-    @connected
-    @locked_coro
-    async def send_sized(self, request: bytes, size: int) -> str:
-        self._transport.serial.reset_output_buffer()
-        self._transport.serial.reset_input_buffer()
-        while not self.q.empty():
-            self.q.get_nowait()
-        self._transport.write(request)
-
-        result = bytearray()
-        try:
-            while len(result) < size:
-                result += await asyncio.wait_for(self.q.get(), TIMEOUT)
-        except asyncio.TimeoutError:
-            _LOGGER.error(
-                "Timeout during receiving response for command '%s', received='%s'",
-                request,
-                result,
-            )
-            raise
-        ret = bytes(result)
-        _LOGGER.debug('Received "%s"', ret)
-        return ret.decode("ascii")
-
 
 # Helpers
 
 
+def _subsequence_count(sequence: bytearray, sub: bytes, previous: tuple[int, int] | None = None) -> tuple[int, int]:
+    """
+    Counts number of subsequences in a sequence
+    """
+    start, count = (previous or (0, 0))
+    while True:
+        idx = sequence.find(sub, start)
+        if idx < 0:
+            return start, count
+        start, count = idx + len(sub), count + 1
+
+
 def _format_zone_status_request(zone: int) -> bytes:
     return "?{}\r".format(zone).encode()
+
+
+def _format_all_zones_status_request(unit: int) -> bytes:
+    return "?{}\r".format(unit * 10).encode()
 
 
 def _format_set_power(zone: int, power: bool) -> bytes:
