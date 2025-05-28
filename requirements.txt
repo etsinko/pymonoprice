@@ -1,2 +1,2 @@
 pyserial>=3.4
-pyserial-asyncio>=0.4
+pyserial-asyncio-fast>=0.16

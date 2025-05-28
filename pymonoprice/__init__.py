@@ -6,7 +6,7 @@ import re
 import serial
 from dataclasses import dataclass
 from functools import wraps
-from serial_asyncio import create_serial_connection, SerialTransport
+from serial_asyncio_fast import create_serial_connection, SerialTransport
 from threading import RLock
 from typing import TYPE_CHECKING
 
